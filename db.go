@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,20 +13,30 @@ var (
 	session     *mgo.Session
 	heartColl   *mgo.Collection
 	usersColl   *mgo.Collection
-	DB          = make(map[string]string)
 	userAccount = make(map[string]string)
 )
 
-type userStruct struct {
-	//ID       bson.ObjectId `bson:"_id"`
+//ID       bson.ObjectId `bson:"_id"`
+type userDB struct {
 	Username string `bson:"username"`
-	Password string `bson:"password"`
+	Password []byte `bson:"password"`
+	Slot     []byte `bson:"slot"`
 	NickName string `bson:"nickname"`
-	email    string `bson:"email"`
+	Email    string `bson:"email"`
 }
 
-type heartStruct struct {
-	tim time.Time `bson:"time"`
+type heartDB []struct {
+	User  string
+	Value int    `json:"value" binding:"required"`
+	Time  uint64 `json:"time" binding:"required"`
+}
+
+func (h heartDB) toInterface(user string) (res []interface{}) {
+	for _, v := range h {
+		v.User = user
+		res = append(res, v)
+	}
+	return res
 }
 
 func initDB() bool {
@@ -64,29 +75,30 @@ func initDB() bool {
 	return true
 }
 
-func insertUser(user userStruct) (err error) {
+func insertUser(user userDB) (err error) {
 	_, err = selectUserByUsername(user.Username)
 	if nil != err {
-		return
+		err = usersColl.Insert(&user)
+		if nil != err {
+			return
+		} else {
+			return
+		}
 	}
-	err = usersColl.Insert(&user)
-	if nil != err {
-		return
-	}
-	return
+	return errors.New("other error")
 }
 
-func selectUserByUsername(username string) (user userStruct, err error) {
+func selectUserByUsername(username string) (user userDB, err error) {
 	err = usersColl.Find(bson.M{"username": username}).One(&user)
 	return
 }
 
-func getAllUsers() (users map[string]string) {
+/*func getAllUsers() (users map[string]string) {
 	users = make(map[string]string)
-	one := userStruct{}
+	one := userDB{}
 	iter := usersColl.Find(nil).Iter()
 	for iter.Next(one) {
 		users[one.Username] = one.Password
 	}
 	return
-}
+}*/
