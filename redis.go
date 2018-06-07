@@ -3,29 +3,24 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
+
+	"github.com/go-redis/redis"
 )
 
-type userInfo struct {
+var (
+	userClt  *redis.Client
+	heartClt *redis.Client
+)
+
+type UserInfo struct {
 	Username string `json:"username"`
-	Password string `json:"password"`
+	Password []byte `json:"password"`
+	Slot     []byte `json:"slot"`
+	Nickname string `json:"nickname"`
 	Phone    string `json:"phone"`
 }
 
-func struct2Map(obj interface{}) map[string]interface{} {
-	t := reflect.TypeOf(obj)
-	v := reflect.ValueOf(obj)
-	fmt.Println(t.NumMethod())
-	fmt.Println(v)
-	data := make(map[string]interface{})
-	for i := 0; i < t.NumField(); i++ {
-		fmt.Println(t.Field(i).Tag.Get("json"))
-		data[t.Field(i).Name] = v.Field(i).Interface()
-	}
-	return data
-}
-
-func (obj *userInfo) toMap() (res map[string]interface{}) {
+func (obj *UserInfo) toMap() (res map[string]interface{}) {
 	e, err := json.Marshal(obj)
 	if nil != err {
 		fmt.Println("marshal err", err)
@@ -35,6 +30,49 @@ func (obj *userInfo) toMap() (res map[string]interface{}) {
 	if nil != err {
 		fmt.Println("unmarshal err", err)
 		return
+	}
+	return
+}
+
+func initDB() bool {
+	userClt = redis.NewClient(&redis.Options{
+		Addr:     "127.0.0.1:6379",
+		Password: "wdq",
+		DB:       0,
+	})
+	heartClt = redis.NewClient(&redis.Options{
+		Addr:     "127.0.0.1:6379",
+		Password: "wdq",
+		DB:       1,
+	})
+	return true
+}
+
+func selectUserByUsername(username string) (user UserInfo, err error) {
+	userMap, err := userClt.HGetAll(username).Result()
+	if nil != err {
+		return
+	}
+	//fmt.Println("map", userMap)
+	userJSON, err := json.Marshal(userMap)
+	if nil != err {
+		return
+	}
+	//fmt.Println("json:", string(userJSON))
+	err = json.Unmarshal(userJSON, &user)
+	return
+}
+
+func insertUser(user UserInfo) (err error) {
+	ex := userClt.Exists(user.Username)
+	if 0 != ex.Val() {
+		fmt.Println("ex:", ex.Val())
+		return fmt.Errorf("username is exsit")
+	}
+	cmd := userClt.HMSet(user.Username, user.toMap())
+	if "OK" != cmd.Val() {
+		fmt.Println("cmd", cmd.Val())
+		return fmt.Errorf("set err")
 	}
 	return
 }
